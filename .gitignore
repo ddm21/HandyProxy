@@ -1,0 +1,24 @@
+# Environments
+venv/
+env/
+.env
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs and Configs (in case they are saved locally during dev)
+logs/
+config.json
+*.txt
