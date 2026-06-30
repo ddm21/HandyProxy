@@ -22,3 +22,8 @@ __pycache__/
 logs/
 config.json
 *.txt
+
+# Go Build Artifacts
+*.exe
+*.syso
+
