@@ -28,24 +28,29 @@ var (
 	procQueryFullProcessImageNameW = kernel32.NewProc("QueryFullProcessImageNameW")
 	procCloseHandle                = kernel32.NewProc("CloseHandle")
 	procSendInput                  = user32.NewProc("SendInput")
+	procCreateMutexW               = kernel32.NewProc("CreateMutexW")
+	procGetLastError               = kernel32.NewProc("GetLastError")
+	procFindWindowW                = user32.NewProc("FindWindowW")
+	procShowWindow                 = user32.NewProc("ShowWindow")
+	procSetForegroundWindow        = user32.NewProc("SetForegroundWindow")
 )
 
 const (
 	PROCESS_QUERY_INFORMATION         = 0x0400
 	PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+	ERROR_ALREADY_EXISTS              = 183
+	SW_RESTORE                        = 9
 )
 
-const defaultPrompt = `You are a cleaning agent for raw voice-to-text dictation. Your job is to format the text into clean, highly readable form while preserving its natural voice-to-text tone.
+const defaultPrompt = `You are a text formatting assistant for raw voice-to-text dictation. Your job is to clean up the text by applying casual formatting and fixing grammar, while preserving the natural conversational tone.
 
 Instructions:
-1. Remove filler words (um, uh, like, you know) and correct glaring grammar/punctuation errors.
-2. Detect natural list structures (e.g., "number one", "secondly", "bullet point") and format them into proper numbered or bulleted lists, but preserve any informal enumeration (e.g., "one", "two", etc.).
-3. Format coding terms, file names (e.g., script.py, index.html), and programming languages clearly, but avoid over-emphasizing them with excessive punctuation or capitalization.
-4. Add proper paragraph breaks for readability, but do not over-divide the text into multiple paragraphs if the original text is coherent.
-5. Output the final formatted text with minimal editing, preserving the natural voice-to-text style and tone.
-6. When in doubt, prioritize preserving the original tone and voice over grammatical correctness.
-7. ONLY output the final formatted text. Do NOT add any conversational padding, and do NOT include any notes about editing (like "(Note: Some minor text was rewritten...") at the end.
-8. Convert spoken words for numbers into numerical digits (e.g., "ten to twenty" becomes "10 to 20"), particularly for percentages, calculations, or quantities, unless the spelled-out form reads more naturally in context.
+1. Fix punctuation and correct obvious grammar mistakes to make the text clear and readable.
+2. Remove filler words ("um", "uh", "like") and stuttering.
+3. Keep the natural, casual conversational tone. Do NOT rewrite sentences to sound overly formal, robotic, or academic.
+4. Preserve the user's original phrasing and structure as much as possible; only change words if the sentence is broken or confusing.
+5. Add paragraph breaks only when the topic clearly changes.
+6. ONLY output the final formatted text. Do NOT add any greetings or conversational padding to your response.
 
 Raw Text: %s`
 
@@ -345,6 +350,23 @@ func monitorLoop() {
 }
 
 func main() {
+	mutexName, _ := syscall.UTF16PtrFromString("HandyProxy_SingleInstance_Mutex")
+	handle, _, mutexErr := procCreateMutexW.Call(0, 0, uintptr(unsafe.Pointer(mutexName)))
+	
+	if handle != 0 && mutexErr != nil && mutexErr.(syscall.Errno) == ERROR_ALREADY_EXISTS {
+		title, _ := syscall.UTF16PtrFromString("HandyProxy")
+		hwnd, _, _ := procFindWindowW.Call(0, uintptr(unsafe.Pointer(title)))
+		if hwnd != 0 {
+			procShowWindow.Call(hwnd, SW_RESTORE)
+			procSetForegroundWindow.Call(hwnd)
+		}
+		return
+	}
+	if handle == 0 {
+		return
+	}
+	defer procCloseHandle.Call(handle)
+
 	initPaths()
 	loadConfig()
 
@@ -366,8 +388,8 @@ func main() {
 	MainWindow{
 		AssignTo: &mw,
 		Title:    "HandyProxy",
-		MinSize:  Size{Width: 900, Height: 650},
-		Size:     Size{Width: 900, Height: 650},
+		MinSize:  Size{Width: 800, Height: 580},
+		Size:     Size{Width: 800, Height: 580},
 		Font:     Font{Family: "Segoe UI", PointSize: 10},
 		Layout:   VBox{},
 		Children: []Widget{
@@ -455,6 +477,18 @@ func main() {
 	}.Create()
 
 	icon, _ := walk.NewIconFromResourceId(10)
+	if icon == nil {
+		// Fallback 1: try ID 2 or 1 which is common for rsrc
+		icon, _ = walk.NewIconFromResourceId(2)
+	}
+	if icon == nil {
+		icon, _ = walk.NewIconFromResourceId(1)
+	}
+	if icon == nil {
+		exePath, _ := os.Executable()
+		iconPath := filepath.Join(filepath.Dir(exePath), "icon-new.ico")
+		icon, _ = walk.NewIconFromFile(iconPath)
+	}
 	if icon == nil {
 		icon, _ = walk.NewIconFromFile("icon-new.ico")
 	}
